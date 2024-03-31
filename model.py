@@ -31,9 +31,37 @@ class UNET(nn.Module):
             self.downs.append(DoubleConv(in_channels, feature))
             in_channels = features
 
+        #Up part of UNet
         for feature in reversed(features):
             self.ups.append(
                 nn.ConvTranspose2d(
-                    feature*2
+                    feature*2,feature, kernel_size=2, stride=2
                 )
             )
+            self.ups.append(DoubleConv(feature*2, feature))
+        
+        #bottleneck part (bottom part)
+        self.bottleneck = DoubleConv(features[-1], features[-1]*2)
+        #The last ouput layer 
+        self.final_conv = nn.Conv2d(features[0], out_channels, kernel_size = 1)
+
+    def forward(self, x):
+        skip_connection = []
+
+        for down in self.downs:
+            x = down(x)
+            skip_connection.append(x)
+            x = self.pool(x)
+        
+        x = self.bottleneck(x)
+        skip_connection = skip_connection[::-1]
+        
+        for index in range(0, len(self.ups), 2):
+            x = self.ups[index](x)
+            skip_connection = skip_connection[index//2]
+            concat_skip = torch.cat((skip_connection, x), dim=1)
+            x = self.ups[index+1](concat_skip)
+        
+        return self.final_conv(x)
+    
+    
